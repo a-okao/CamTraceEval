@@ -243,9 +243,11 @@ def main():
     if t_last is None and records:
         t_last = t_start + records[-1]["time"]
 
+    traj_for_eval = runtime_traj if runtime_traj is not None else trajectory
+
     xs = [rec["x"] for rec in records]
     ys = [rec["y"] for rec in records]
-    errors = compute_errors(xs, ys, trajectory)
+    errors = compute_errors(xs, ys, traj_for_eval)
     for rec, err in zip(records, errors):
         if err is None or (isinstance(err, float) and math.isnan(err)):
             rec["error"] = None
@@ -263,7 +265,7 @@ def main():
     err_plot_path = base_dir / f"{prefix}_error.png"
 
     save_csv(records, csv_path)
-    ideal_points = trajectory.ideal_points()
+    ideal_points = traj_for_eval.ideal_points()
     actual_points = [(rec["x"], rec["y"]) for rec in records]
     plot_trajectory(ideal_points, actual_points, traj_plot_path, mode)
     times = [rec["time"] for rec in records]
@@ -275,6 +277,42 @@ def main():
     print(f"Samples: {len(records)}")
     print(f"Duration: {duration:.3f} s (t_start={t_start:.3f}, t_end={t_last:.3f})")
     print(f"RMSE: {rmse:.3f} mm, Max error: {max_err:.3f} mm")
+
+    # Result window (separate from camera view)
+    result_lines = [
+        f"Mode: {mode}",
+        f"Samples: {len(records)}",
+        f"Duration: {duration:.3f} s",
+        f"RMSE: {rmse:.3f} mm",
+        f"Max error: {max_err:.3f} mm",
+        f"CSV: {csv_path.name}",
+        f"Trajectory plot: {traj_plot_path.name}",
+        f"Error plot: {err_plot_path.name}",
+        "Press any key to close",
+    ]
+    res_h = 30 + 25 * len(result_lines)
+    res_w = 640
+    result_img = np.ones((res_h, res_w, 3), dtype=np.uint8) * 255
+    y = 30
+    for line in result_lines:
+        cv2.putText(result_img, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
+        y += 25
+    cv2.imshow("Result", result_img)
+
+    # Show saved plots in separate windows (press any key to close all)
+    traj_img = cv2.imread(str(traj_plot_path))
+    if traj_img is not None:
+        cv2.imshow("Trajectory Plot", traj_img)
+    else:
+        print(f"Failed to open trajectory plot image: {traj_plot_path}")
+    err_img = cv2.imread(str(err_plot_path))
+    if err_img is not None:
+        cv2.imshow("Error Plot", err_img)
+    else:
+        print(f"Failed to open error plot image: {err_plot_path}")
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
