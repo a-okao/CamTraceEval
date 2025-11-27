@@ -7,6 +7,7 @@ camera:
   start_key: "s"   # 計測開始キー
   stop_key: "e"    # 計測終了キー
   quit_key: "q"    # 中断キー
+  calibrate_key: "c"  # キャリブレーションモード開始キー（2点クリックで100mm指定）
 
 marker:
   # 赤色マーカー用HSV範囲（2区間）。他色に変える場合は hsv_ranges を編集。
@@ -35,6 +36,7 @@ calibration:
       [0.0, 1.0, 0.0],
       [0.0, 0.0, 1.0]
     ]
+  two_point_length_mm: 100.0   # キャリブレーション用にクリックする直線長さ
 
 trajectory:
   line:

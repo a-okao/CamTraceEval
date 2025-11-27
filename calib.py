@@ -3,9 +3,48 @@ from typing import Optional, Tuple
 import numpy as np
 
 
-def pixel_to_world(u: Optional[float], v: Optional[float], calib_params: dict) -> Tuple[Optional[float], Optional[float]]:
+def build_two_point_calibration(p0_px, p1_px, length_mm: float = 100.0) -> dict:
+    """Build a runtime calibration from two clicked points defining a straight line of length_mm."""
+    p0 = np.array(p0_px, dtype=float)
+    p1 = np.array(p1_px, dtype=float)
+    v = p1 - p0
+    norm = np.linalg.norm(v)
+    if norm == 0:
+        raise ValueError("Calibration points must be distinct")
+    axis = v / norm
+    perp = np.array([-axis[1], axis[0]])
+    scale = length_mm / norm  # mm per pixel along the line direction
+    return {
+        "origin": p0,
+        "axis": axis,
+        "perp": perp,
+        "scale": scale,
+        "length_mm": length_mm,
+    }
+
+
+def pixel_to_world_runtime(u: float, v: float, runtime_calib: dict) -> Tuple[float, float]:
+    p = np.array([u, v], dtype=float)
+    origin = np.array(runtime_calib["origin"], dtype=float)
+    axis = np.array(runtime_calib["axis"], dtype=float)
+    perp = np.array(runtime_calib["perp"], dtype=float)
+    scale = float(runtime_calib["scale"])
+    delta = p - origin
+    x_mm = float(np.dot(delta, axis) * scale)  # along the line (0 -> length_mm)
+    y_mm = float(np.dot(delta, perp) * scale)  # perpendicular to the line
+    return x_mm, y_mm
+
+
+def pixel_to_world(u: Optional[float], v: Optional[float], calib_params: dict, runtime_calib: Optional[dict] = None) -> Tuple[Optional[float], Optional[float]]:
     if u is None or v is None:
         return None, None
+
+    if runtime_calib is not None:
+        try:
+            return pixel_to_world_runtime(float(u), float(v), runtime_calib)
+        except Exception:
+            return None, None
+
     model = calib_params.get("model", "scale_offset")
     if model == "scale_offset":
         so = calib_params.get("scale_offset", {})

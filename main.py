@@ -4,14 +4,15 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
+import numpy as np
 import yaml
 
-from calib import pixel_to_world
+from calib import build_two_point_calibration, pixel_to_world
 from camera import Camera
 from evaluator import compute_errors, error_stats, movement_duration
 from io_utils import ensure_dir, plot_error, plot_trajectory, save_csv
 from marker import detect_marker
-from trajectory import build_trajectory
+from trajectory import LineTrajectory, build_trajectory
 
 
 def key_code(value) -> int:
@@ -58,8 +59,21 @@ def main():
     start_key = key_code(camera_cfg.get("start_key", "s"))
     stop_key = key_code(camera_cfg.get("stop_key", "e"))
     quit_key = key_code(camera_cfg.get("quit_key", "q"))
+    calibrate_key = key_code(camera_cfg.get("calibrate_key", "c"))
+
+    calib_line_length = float(calib_cfg.get("two_point_length_mm", 100.0))
 
     trajectory = build_trajectory(mode, config)
+
+    runtime_calib = None
+    calib_points_px = []
+    calib_line_px = None
+    calibrating = False
+
+    records = []
+    measuring = False
+    t_start = None
+    t_last = None
 
     cam = Camera(
         device_id=args.device if args.device is not None else int(camera_cfg.get("device_id", 0)),
@@ -68,10 +82,29 @@ def main():
         window_name=camera_cfg.get("window_name", "LiveView"),
     )
 
-    records = []
-    measuring = False
-    t_start = None
-    t_last = None
+    def mouse_cb(event, x, y, flags, param):
+        nonlocal calibrating, calib_points_px, runtime_calib, trajectory, calib_line_px
+        if not calibrating:
+            return
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if len(calib_points_px) >= 2:
+                return
+            calib_points_px.append((x, y))
+            print(f"Calibration point {len(calib_points_px)}: ({x}, {y})")
+            if len(calib_points_px) == 2:
+                try:
+                    runtime_calib = build_two_point_calibration(calib_points_px[0], calib_points_px[1], calib_line_length)
+                    calib_line_px = (calib_points_px[0], calib_points_px[1])
+                    if mode == "LINE":
+                        trajectory = LineTrajectory(np.array([0.0, 0.0]), np.array([calib_line_length, 0.0]))
+                    print("Calibration updated from two points.")
+                except Exception as e:
+                    print(f"Calibration failed: {e}")
+                    runtime_calib = None
+                    calib_line_px = None
+                calibrating = False
+
+    cam.set_mouse_callback(mouse_cb)
 
     try:
         while True:
@@ -84,7 +117,7 @@ def main():
                     return
 
             u, v = detect_marker(frame, marker_cfg)
-            x, y = pixel_to_world(u, v, calib_cfg)
+            x, y = pixel_to_world(u, v, calib_cfg, runtime_calib=runtime_calib)
 
             draw_frame = frame.copy()
             if u is not None and v is not None:
@@ -99,14 +132,14 @@ def main():
                     line_type=cv2.LINE_AA,
                 )
 
-            status_text = "REC" if measuring else "READY"
-            status_color = (0, 255, 0) if measuring else (0, 255, 255)
+            status_text = "CALIB" if calibrating else ("REC" if measuring else "READY")
+            status_color = (0, 165, 255) if calibrating else ((0, 255, 0) if measuring else (0, 255, 255))
             font_scale = float(display_cfg.get("font_scale", 0.5))
             text_color = tuple(display_cfg.get("text_color", [0, 255, 0]))
             cv2.putText(draw_frame, f"{status_text} mode={mode}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
             cv2.putText(
                 draw_frame,
-                f"[{format_key(start_key)}]=start  [{format_key(stop_key)}]=stop  [{format_key(quit_key)}]=quit",
+                f"[{format_key(start_key)}]=start  [{format_key(stop_key)}]=stop  [{format_key(calibrate_key)}]=calib  [{format_key(quit_key)}]=quit",
                 (10, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 font_scale,
@@ -115,21 +148,43 @@ def main():
                 cv2.LINE_AA,
             )
 
+            text_y_base = 60
+            if calibrating:
+                cv2.putText(draw_frame, f"Calibrate: click 2 points ({calib_line_length:.0f}mm)", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
+                text_y_base += 20
+
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
             if x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
                 xy_text = f"x,y: {x:.1f}, {y:.1f} mm"
             else:
                 xy_text = "x,y: N/A"
-            cv2.putText(draw_frame, uv_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
-            cv2.putText(draw_frame, xy_text, (10, 85), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
+            cv2.putText(draw_frame, uv_text, (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
+            cv2.putText(draw_frame, xy_text, (10, text_y_base + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
+
+            # Draw calibration clicks and line overlay
+            if calib_points_px:
+                for pt in calib_points_px:
+                    cv2.circle(draw_frame, pt, 4, (255, 0, 0), thickness=-1)
+            if calib_line_px and mode == "LINE":
+                cv2.line(draw_frame, calib_line_px[0], calib_line_px[1], (255, 255, 0), thickness=2)
 
             key = cam.show(draw_frame)
 
-            if key == start_key and not measuring:
+            if key == calibrate_key:
+                if measuring:
+                    print("Stop measurement before entering calibration.")
+                else:
+                    calibrating = True
+                    calib_points_px = []
+                    calib_line_px = None
+                    print(f"Calibration mode: click two points for {calib_line_length}mm reference.")
+            elif key == start_key and not measuring and not calibrating:
                 measuring = True
                 t_start = ts
                 records.clear()
                 print("Measurement started.")
+            elif key == start_key and calibrating:
+                print("Finish calibration clicks before starting measurement.")
             elif key == stop_key and measuring:
                 t_last = ts
                 measuring = False

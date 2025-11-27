@@ -11,9 +11,11 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
    ```
 2. `config.yaml` を実環境に合わせて編集
    - `camera.device_id`: 使用するカメラ番号
+   - `camera.calibrate_key`: キャリブレーションモードに入るキー（デフォルト `c`）
    - `marker.hsv_ranges`: 赤色マーカー（塗りつぶし円）用のHSV範囲。別色にしたい場合はここを変更
    - `marker.hsv_lower/hsv_upper`: 単一区間で使いたい場合のしきい値
    - `calibration`: スケール/オフセット or ホモグラフィ行列
+   - `calibration.two_point_length_mm`: キャリブレーションでクリックする2点間を何mmとみなすか（デフォルト 100mm）
    - `trajectory`: 直線始点/終点、円の中心/半径
    - `output.base_dir` や `output.label` など
 3. カメラを接続し、マーカーが映る位置にセット
@@ -30,6 +32,7 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
 - `[e]`: 計測終了（自動で保存）
 - `[q]` または `ESC`: 中断終了
 - 計測中でなくても検出したマーカー座標 (u,v) / (x,y) を表示。検出位置は緑の十字線で重畳描画。
+- `[c]`（デフォルト）: キャリブレーションモード。マウス左クリックで2点を順に指定し、2点目をクリックした時点で自動終了。1点目を原点、2点目を x=100mm（設定値）とみなし、以降の mm 座標を更新。LINEモードではクリックした2点を結ぶ直線をライブビューに表示。
 
 ### 出力
 - CSV: `outputs/mode_<mode>_<label>_<timestamp>.csv`

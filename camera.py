@@ -16,6 +16,7 @@ class Camera:
         if height:
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.start_time = None
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
 
     def get_frame(self) -> Tuple[Optional[Any], Optional[float]]:
         """Returns frame and relative timestamp [s]."""
@@ -36,3 +37,6 @@ class Camera:
         if self.cap:
             self.cap.release()
         cv2.destroyAllWindows()
+
+    def set_mouse_callback(self, callback) -> None:
+        cv2.setMouseCallback(self.window_name, callback)
