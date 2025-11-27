@@ -12,7 +12,7 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
 2. `config.yaml` を実環境に合わせて編集
    - `camera.device_id`: 使用するカメラ番号
    - `camera.calibrate_key`: キャリブレーションモードに入るキー（デフォルト `c`）
-   - `marker.hsv_ranges`: 赤色マーカー（塗りつぶし円）用のHSV範囲。別色にしたい場合はここを変更
+   - `marker.hsv_ranges`: 緑色マーカー用のHSV範囲。別色にしたい場合はここを変更
    - `marker.hsv_lower/hsv_upper`: 単一区間で使いたい場合のしきい値
    - `calibration`: スケール/オフセット or ホモグラフィ行列
    - `calibration.two_point_length_mm`: キャリブレーションでクリックする2点間を何mmとみなすか（デフォルト 100mm）

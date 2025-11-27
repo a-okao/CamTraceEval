@@ -10,15 +10,13 @@ camera:
   calibrate_key: "c"  # キャリブレーションモード開始キー（2点クリックで100mm指定）
 
 marker:
-  # 赤色マーカー用HSV範囲（2区間）。他色に変える場合は hsv_ranges を編集。
+  # 緑色マーカー用HSV範囲（2区間の例）。他色に変える場合は hsv_ranges を編集。
   hsv_ranges:
-    - lower: [0, 120, 70]
-      upper: [10, 255, 255]
-    - lower: [170, 120, 70]
-      upper: [180, 255, 255]
+    - lower: [40, 50, 50]
+      upper: [90, 255, 255]
   # 旧形式の単一区間を使う場合はこちらを指定（hsv_ranges を削除）
-  hsv_lower: [0, 120, 70]
-  hsv_upper: [10, 255, 255]
+  hsv_lower: [40, 50, 50]
+  hsv_upper: [90, 255, 255]
   min_area: 50                # ノイズ除去用の面積閾値
   blur_kernel: 5              # ガウシアンぼかし (奇数)
   morph_kernel: 5             # モルフォロジー処理カーネル (奇数)

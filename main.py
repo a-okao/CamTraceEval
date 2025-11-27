@@ -129,7 +129,7 @@ def main():
                 cv2.drawMarker(
                     draw_frame,
                     (int(u), int(v)),
-                    (0, 255, 0),
+                    (0, 0, 255),
                     markerType=cv2.MARKER_CROSS,
                     markerSize=radius,
                     thickness=2,
