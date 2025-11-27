@@ -89,7 +89,15 @@ def main():
             draw_frame = frame.copy()
             if u is not None and v is not None:
                 radius = int(display_cfg.get("draw_marker_radius", 8))
-                cv2.circle(draw_frame, (int(u), int(v)), radius, (0, 0, 255), thickness=-1)  # red filled marker overlay
+                cv2.drawMarker(
+                    draw_frame,
+                    (int(u), int(v)),
+                    (0, 255, 0),
+                    markerType=cv2.MARKER_CROSS,
+                    markerSize=radius,
+                    thickness=2,
+                    line_type=cv2.LINE_AA,
+                )
 
             status_text = "REC" if measuring else "READY"
             status_color = (0, 255, 0) if measuring else (0, 255, 255)
