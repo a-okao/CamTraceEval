@@ -69,6 +69,7 @@ def main():
     calib_points_px = []
     calib_line_px = None
     calibrating = False
+    runtime_traj = trajectory
 
     records = []
     measuring = False
@@ -83,7 +84,7 @@ def main():
     )
 
     def mouse_cb(event, x, y, flags, param):
-        nonlocal calibrating, calib_points_px, runtime_calib, trajectory, calib_line_px
+        nonlocal calibrating, calib_points_px, runtime_calib, runtime_traj, calib_line_px
         if not calibrating:
             return
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -96,7 +97,7 @@ def main():
                     runtime_calib = build_two_point_calibration(calib_points_px[0], calib_points_px[1], calib_line_length)
                     calib_line_px = (calib_points_px[0], calib_points_px[1])
                     if mode == "LINE":
-                        trajectory = LineTrajectory(np.array([0.0, 0.0]), np.array([calib_line_length, 0.0]))
+                        runtime_traj = LineTrajectory(np.array([0.0, 0.0]), np.array([calib_line_length, 0.0]))
                     print("Calibration updated from two points.")
                 except Exception as e:
                     print(f"Calibration failed: {e}")
@@ -118,6 +119,9 @@ def main():
 
             u, v = detect_marker(frame, marker_cfg)
             x, y = pixel_to_world(u, v, calib_cfg, runtime_calib=runtime_calib)
+            current_error = None
+            if mode == "LINE" and runtime_traj and x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
+                current_error = runtime_traj.distance(x, y)
 
             draw_frame = frame.copy()
             if u is not None and v is not None:
@@ -160,6 +164,20 @@ def main():
                 xy_text = "x,y: N/A"
             cv2.putText(draw_frame, uv_text, (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
             cv2.putText(draw_frame, xy_text, (10, text_y_base + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
+
+            # Error display under coordinates (LINE mode with calibration)
+            err_text_y = text_y_base + 40
+            if current_error is not None and runtime_calib is not None and mode == "LINE":
+                cv2.putText(
+                    draw_frame,
+                    f"err: {current_error:.1f} mm",
+                    (10, err_text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    text_color,
+                    1,
+                    cv2.LINE_AA,
+                )
 
             # Draw calibration clicks and line overlay
             if calib_points_px:
