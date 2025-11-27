@@ -7,12 +7,12 @@ import cv2
 import numpy as np
 import yaml
 
-from calib import build_two_point_calibration, pixel_to_world
+from calib import build_circle_calibration, build_two_point_calibration, pixel_to_world
 from camera import Camera
 from evaluator import compute_errors, error_stats, movement_duration
 from io_utils import ensure_dir, plot_error, plot_trajectory, save_csv
 from marker import detect_marker
-from trajectory import LineTrajectory, build_trajectory
+from trajectory import CircleTrajectory, LineTrajectory, build_trajectory
 
 
 def key_code(value) -> int:
@@ -68,6 +68,7 @@ def main():
     runtime_calib = None
     calib_points_px = []
     calib_line_px = None
+    calib_circle_draw = None
     calibrating = False
     runtime_traj = trajectory
 
@@ -84,7 +85,7 @@ def main():
     )
 
     def mouse_cb(event, x, y, flags, param):
-        nonlocal calibrating, calib_points_px, runtime_calib, runtime_traj, calib_line_px
+        nonlocal calibrating, calib_points_px, runtime_calib, runtime_traj, calib_line_px, calib_circle_draw
         if not calibrating:
             return
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -94,15 +95,30 @@ def main():
             print(f"Calibration point {len(calib_points_px)}: ({x}, {y})")
             if len(calib_points_px) == 2:
                 try:
-                    runtime_calib = build_two_point_calibration(calib_points_px[0], calib_points_px[1], calib_line_length)
-                    calib_line_px = (calib_points_px[0], calib_points_px[1])
                     if mode == "LINE":
+                        runtime_calib = build_two_point_calibration(calib_points_px[0], calib_points_px[1], calib_line_length)
+                        calib_line_px = (calib_points_px[0], calib_points_px[1])
                         runtime_traj = LineTrajectory(np.array([0.0, 0.0]), np.array([calib_line_length, 0.0]))
-                    print("Calibration updated from two points.")
+                        calib_circle_draw = None
+                        print("Line calibration updated from two points.")
+                    elif mode == "CIRCLE":
+                        center_pt = calib_points_px[0]
+                        edge_pt = calib_points_px[1]
+                        radius_mm = float(config.get("trajectory", {}).get("circle", {}).get("radius", 40.0))
+                        runtime_calib = build_circle_calibration(center_pt, edge_pt, radius_mm=radius_mm)
+                        runtime_traj = CircleTrajectory(center=np.array([0.0, 0.0]), radius=radius_mm, samples=int(config.get("trajectory", {}).get("ideal_plot_samples", 360)))
+                        # store for drawing: center(px), radius(px)
+                        r_px = np.linalg.norm(np.array(edge_pt, dtype=float) - np.array(center_pt, dtype=float))
+                        calib_circle_draw = (center_pt, r_px)
+                        calib_line_px = None
+                        print(f"Circle calibration updated: center={center_pt}, radius_px={r_px:.2f} -> radius_mm={radius_mm}")
+                    else:
+                        print(f"Calibration not supported for mode: {mode}")
                 except Exception as e:
                     print(f"Calibration failed: {e}")
                     runtime_calib = None
                     calib_line_px = None
+                    calib_circle_draw = None
                 calibrating = False
 
     cam.set_mouse_callback(mouse_cb)
@@ -120,7 +136,7 @@ def main():
             u, v = detect_marker(frame, marker_cfg)
             x, y = pixel_to_world(u, v, calib_cfg, runtime_calib=runtime_calib)
             current_error = None
-            if mode == "LINE" and runtime_traj and x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
+            if runtime_traj and x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
                 current_error = runtime_traj.distance(x, y)
 
             draw_frame = frame.copy()
@@ -154,7 +170,11 @@ def main():
 
             text_y_base = 60
             if calibrating:
-                cv2.putText(draw_frame, f"Calibrate: click 2 points ({calib_line_length:.0f}mm)", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
+                if mode == "LINE":
+                    calib_msg = f"Calibrate LINE: click 2 points ({calib_line_length:.0f}mm)"
+                else:
+                    calib_msg = "Calibrate CIRCLE: click center then edge"
+                cv2.putText(draw_frame, calib_msg, (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
                 text_y_base += 20
 
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
@@ -167,7 +187,7 @@ def main():
 
             # Error display under coordinates (LINE mode with calibration)
             err_text_y = text_y_base + 40
-            if current_error is not None and runtime_calib is not None and mode == "LINE":
+            if current_error is not None and runtime_calib is not None:
                 cv2.putText(
                     draw_frame,
                     f"err: {current_error:.1f} mm",
@@ -185,6 +205,10 @@ def main():
                     cv2.circle(draw_frame, pt, 4, (255, 0, 0), thickness=-1)
             if calib_line_px and mode == "LINE":
                 cv2.line(draw_frame, calib_line_px[0], calib_line_px[1], (255, 255, 0), thickness=2)
+            if calib_circle_draw and mode == "CIRCLE":
+                center_pt, r_px = calib_circle_draw
+                cv2.circle(draw_frame, center_pt, int(r_px), (255, 255, 0), thickness=2)
+                cv2.circle(draw_frame, center_pt, 4, (0, 255, 255), thickness=-1)
 
             key = cam.show(draw_frame)
 
@@ -195,7 +219,11 @@ def main():
                     calibrating = True
                     calib_points_px = []
                     calib_line_px = None
-                    print(f"Calibration mode: click two points for {calib_line_length}mm reference.")
+                    calib_circle_draw = None
+                    if mode == "LINE":
+                        print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
+                    else:
+                        print("Calibration mode (CIRCLE): click center then edge point.")
             elif key == start_key and not measuring and not calibrating:
                 measuring = True
                 t_start = ts

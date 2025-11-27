@@ -15,11 +15,28 @@ def build_two_point_calibration(p0_px, p1_px, length_mm: float = 100.0) -> dict:
     perp = np.array([-axis[1], axis[0]])
     scale = length_mm / norm  # mm per pixel along the line direction
     return {
+        "model": "line_two_point",
         "origin": p0,
         "axis": axis,
         "perp": perp,
         "scale": scale,
         "length_mm": length_mm,
+    }
+
+
+def build_circle_calibration(center_px, edge_px, radius_mm: float) -> dict:
+    c = np.array(center_px, dtype=float)
+    e = np.array(edge_px, dtype=float)
+    r_px = np.linalg.norm(e - c)
+    if r_px == 0:
+        raise ValueError("Circle calibration requires distinct center and edge point")
+    scale = radius_mm / r_px  # mm per pixel
+    return {
+        "model": "circle_center_radius",
+        "center_px": c,
+        "radius_px": r_px,
+        "radius_mm": radius_mm,
+        "scale": scale,
     }
 
 
@@ -41,7 +58,14 @@ def pixel_to_world(u: Optional[float], v: Optional[float], calib_params: dict, r
 
     if runtime_calib is not None:
         try:
-            return pixel_to_world_runtime(float(u), float(v), runtime_calib)
+            model = runtime_calib.get("model")
+            if model == "line_two_point":
+                return pixel_to_world_runtime(float(u), float(v), runtime_calib)
+            elif model == "circle_center_radius":
+                c = np.array(runtime_calib["center_px"], dtype=float)
+                scale = float(runtime_calib["scale"])
+                delta = np.array([u, v], dtype=float) - c
+                return float(delta[0] * scale), float(delta[1] * scale)
         except Exception:
             return None, None
 
