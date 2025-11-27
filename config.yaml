@@ -1,0 +1,55 @@
+# カメラ＋マーカー手先軌道評価システム 設定例
+camera:
+  device_id: 0
+  frame_width: 640
+  frame_height: 480
+  window_name: "LiveView"
+  start_key: "s"   # 計測開始キー
+  stop_key: "e"    # 計測終了キー
+  quit_key: "q"    # 中断キー
+
+marker:
+  # 赤色マーカー用HSV範囲（2区間）。他色に変える場合は hsv_ranges を編集。
+  hsv_ranges:
+    - lower: [0, 120, 70]
+      upper: [10, 255, 255]
+    - lower: [170, 120, 70]
+      upper: [180, 255, 255]
+  # 旧形式の単一区間を使う場合はこちらを指定（hsv_ranges を削除）
+  hsv_lower: [0, 120, 70]
+  hsv_upper: [10, 255, 255]
+  min_area: 50                # ノイズ除去用の面積閾値
+  blur_kernel: 5              # ガウシアンぼかし (奇数)
+  morph_kernel: 5             # モルフォロジー処理カーネル (奇数)
+
+calibration:
+  model: "scale_offset"       # "scale_offset" または "homography"
+  scale_offset:
+    scale_x_mm_per_px: 0.25   # 例: 1px あたり 0.25 mm
+    scale_y_mm_per_px: 0.25
+    offset_x_mm: 0.0
+    offset_y_mm: 0.0
+  homography:
+    matrix: [
+      [1.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [0.0, 0.0, 1.0]
+    ]
+
+trajectory:
+  line:
+    p0: [0.0, 0.0]
+    p1: [100.0, 0.0]  # 100 mm 直線
+  circle:
+    center: [50.0, 0.0]
+    radius: 40.0      # 直径 80 mm
+  ideal_plot_samples: 360
+
+output:
+  base_dir: "outputs"
+  label: "before"    # "before" / "after" など任意
+
+display:
+  draw_marker_radius: 8
+  font_scale: 0.5
+  text_color: [0, 255, 0]
