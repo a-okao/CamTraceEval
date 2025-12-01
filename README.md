@@ -6,7 +6,7 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
 
 1. 依存ライブラリをインストール
    ```bash
-   pip install opencv-python numpy matplotlib pyyaml
+    pip install opencv-python numpy matplotlib pyyaml
    ```
 2. `config.yaml` を実環境に合わせて編集
    - `camera.device_id`: 使用するカメラ番号
@@ -22,6 +22,12 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
 ## 2. 使い方（計測フロー）
 
 ### 起動コマンド例
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install opencv-python numpy matplotlib pyyaml
+```
+
 - 直線軌道モード: `python main.py --mode LINE --label before`
 - 円軌道モード: `python main.py --mode CIRCLE --label before`
 - 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
