@@ -55,6 +55,7 @@ def main():
     marker_cfg = config.get("marker", {})
     calib_cfg = config.get("calibration", {})
     display_cfg = config.get("display", {})
+    traj_cfg = config.get("trajectory", {})
 
     start_key = key_code(camera_cfg.get("start_key", "s"))
     stop_key = key_code(camera_cfg.get("stop_key", "e"))
@@ -63,6 +64,7 @@ def main():
     color_calibrate_key = key_code(camera_cfg.get("color_calibrate_key", "k"))
 
     calib_line_length = float(calib_cfg.get("two_point_length_mm", 100.0))
+    endpoint_threshold = float(traj_cfg.get("endpoint_threshold_mm", 5.0))
 
     trajectory = build_trajectory(mode, config)
 
@@ -82,6 +84,14 @@ def main():
     measuring = False
     t_start = None
     t_last = None
+
+    # Round trip measurement state
+    RT_STATE_AWAITING_DEPARTURE = "AWAITING_DEPARTURE"
+    RT_STATE_GOING_TO_ENDPOINT = "GOING_TO_ENDPOINT"
+    RT_STATE_RETURNING_TO_STARTPOINT = "RETURNING_TO_STARTPOINT"
+    round_trip_state = RT_STATE_AWAITING_DEPARTURE
+    round_trip_start_time = None
+    round_trip_durations = []
 
     cam = Camera(
         device_id=args.device if args.device is not None else int(camera_cfg.get("device_id", 0)),
@@ -182,6 +192,28 @@ def main():
             if runtime_traj and x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
                 current_error = runtime_traj.distance(x, y)
 
+            if measuring and mode == "LINE" and isinstance(runtime_traj, LineTrajectory) and x is not None:
+                p0 = runtime_traj.p0
+                p1 = runtime_traj.p1
+                pos = np.array([x, y])
+                dist_to_p0 = np.linalg.norm(pos - p0)
+                dist_to_p1 = np.linalg.norm(pos - p1)
+
+                if round_trip_state == RT_STATE_AWAITING_DEPARTURE:
+                    if dist_to_p0 > endpoint_threshold:
+                        round_trip_state = RT_STATE_GOING_TO_ENDPOINT
+                        round_trip_start_time = ts
+                        print(f"Round trip started at t={ts:.3f}")
+                elif round_trip_state == RT_STATE_GOING_TO_ENDPOINT:
+                    if dist_to_p1 < endpoint_threshold:
+                        round_trip_state = RT_STATE_RETURNING_TO_STARTPOINT
+                elif round_trip_state == RT_STATE_RETURNING_TO_STARTPOINT:
+                    if dist_to_p0 < endpoint_threshold:
+                        duration = ts - round_trip_start_time
+                        round_trip_durations.append(duration)
+                        print(f"Round trip {len(round_trip_durations)} completed in {duration:.3f}s")
+                        round_trip_state = RT_STATE_AWAITING_DEPARTURE
+
             draw_frame = frame.copy()
             if u is not None and v is not None:
                 radius = int(display_cfg.get("draw_marker_radius", 8))
@@ -225,6 +257,10 @@ def main():
             elif is_calibrating_color:
                 cv2.putText(draw_frame, "COLOR CALIBRATION: Click on the color to track", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
                 text_y_base += 20
+
+            if mode == "LINE" and measuring:
+                rt_text = f"RT: {len(round_trip_durations)}"
+                cv2.putText(draw_frame, rt_text, (draw_frame.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
 
 
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
@@ -286,6 +322,8 @@ def main():
                 measuring = True
                 t_start = ts
                 records.clear()
+                round_trip_state = RT_STATE_AWAITING_DEPARTURE
+                round_trip_durations.clear()
                 print("Measurement started.")
             elif key == start_key and app_state != STATE_VIEW:
                 print("Finish calibration before starting measurement.")
@@ -364,18 +402,31 @@ def main():
     print(f"Duration: {duration:.3f} s (t_start={t_start:.3f}, t_end={t_last:.3f})")
     print(f"RMSE: {rmse:.3f} mm, Max error: {max_err:.3f} mm")
 
-    # Result window (separate from camera view)
     result_lines = [
         f"Mode: {mode}",
         f"Samples: {len(records)}",
         f"Duration: {duration:.3f} s",
         f"RMSE: {rmse:.3f} mm",
         f"Max error: {max_err:.3f} mm",
+    ]
+
+    if round_trip_durations:
+        avg_rt = np.mean(round_trip_durations)
+        min_rt = min(round_trip_durations)
+        max_rt = max(round_trip_durations)
+        print(f"Round Trips: {len(round_trip_durations)} completed.")
+        print(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
+        result_lines.append(f"Round Trips: {len(round_trip_durations)}")
+        result_lines.append(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
+
+    result_lines.extend([
         f"CSV: {csv_path.name}",
         f"Trajectory plot: {traj_plot_path.name}",
         f"Error plot: {err_plot_path.name}",
         "Press any key to close",
-    ]
+    ])
+
+    # Result window (separate from camera view)
     res_h = 30 + 25 * len(result_lines)
     res_w = 640
     result_img = np.ones((res_h, res_w, 3), dtype=np.uint8) * 255
