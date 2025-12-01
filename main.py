@@ -85,13 +85,21 @@ def main():
     t_start = None
     t_last = None
 
-    # Round trip measurement state
+    # Round trip measurement state (for LINE mode)
     RT_STATE_AWAITING_DEPARTURE = "AWAITING_DEPARTURE"
     RT_STATE_GOING_TO_ENDPOINT = "GOING_TO_ENDPOINT"
     RT_STATE_RETURNING_TO_STARTPOINT = "RETURNING_TO_STARTPOINT"
     round_trip_state = RT_STATE_AWAITING_DEPARTURE
     round_trip_start_time = None
     round_trip_durations = []
+
+    # Lap timing state (for CIRCLE mode)
+    LAP_STATE_AWAITING_START = "AWAITING_START"
+    LAP_STATE_AWAITING_HALFWAY = "AWAITING_HALFWAY"
+    LAP_STATE_AWAITING_FINISH = "AWAITING_FINISH"
+    lap_state = LAP_STATE_AWAITING_START
+    lap_start_time = None
+    lap_durations = []
 
     cam = Camera(
         device_id=args.device if args.device is not None else int(camera_cfg.get("device_id", 0)),
@@ -192,27 +200,51 @@ def main():
             if runtime_traj and x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
                 current_error = runtime_traj.distance(x, y)
 
-            if measuring and mode == "LINE" and isinstance(runtime_traj, LineTrajectory) and x is not None:
-                p0 = runtime_traj.p0
-                p1 = runtime_traj.p1
-                pos = np.array([x, y])
-                dist_to_p0 = np.linalg.norm(pos - p0)
-                dist_to_p1 = np.linalg.norm(pos - p1)
+            if measuring and x is not None and y is not None:
+                if mode == "LINE" and isinstance(runtime_traj, LineTrajectory):
+                    p0 = runtime_traj.p0
+                    p1 = runtime_traj.p1
+                    pos = np.array([x, y])
+                    dist_to_p0 = np.linalg.norm(pos - p0)
+                    dist_to_p1 = np.linalg.norm(pos - p1)
 
-                if round_trip_state == RT_STATE_AWAITING_DEPARTURE:
-                    if dist_to_p0 > endpoint_threshold:
-                        round_trip_state = RT_STATE_GOING_TO_ENDPOINT
-                        round_trip_start_time = ts
-                        print(f"Round trip started at t={ts:.3f}")
-                elif round_trip_state == RT_STATE_GOING_TO_ENDPOINT:
-                    if dist_to_p1 < endpoint_threshold:
-                        round_trip_state = RT_STATE_RETURNING_TO_STARTPOINT
-                elif round_trip_state == RT_STATE_RETURNING_TO_STARTPOINT:
-                    if dist_to_p0 < endpoint_threshold:
-                        duration = ts - round_trip_start_time
-                        round_trip_durations.append(duration)
-                        print(f"Round trip {len(round_trip_durations)} completed in {duration:.3f}s")
-                        round_trip_state = RT_STATE_AWAITING_DEPARTURE
+                    if round_trip_state == RT_STATE_AWAITING_DEPARTURE:
+                        if dist_to_p0 > endpoint_threshold:
+                            round_trip_state = RT_STATE_GOING_TO_ENDPOINT
+                            round_trip_start_time = ts
+                            print(f"Round trip started at t={ts:.3f}")
+                    elif round_trip_state == RT_STATE_GOING_TO_ENDPOINT:
+                        if dist_to_p1 < endpoint_threshold:
+                            round_trip_state = RT_STATE_RETURNING_TO_STARTPOINT
+                    elif round_trip_state == RT_STATE_RETURNING_TO_STARTPOINT:
+                        if dist_to_p0 < endpoint_threshold:
+                            duration = ts - round_trip_start_time
+                            round_trip_durations.append(duration)
+                            print(f"Round trip {len(round_trip_durations)} completed in {duration:.3f}s")
+                            round_trip_state = RT_STATE_AWAITING_DEPARTURE
+                elif mode == "CIRCLE" and isinstance(runtime_traj, CircleTrajectory):
+                    center = runtime_traj.center
+                    angle = math.atan2(y - center[1], x - center[0])
+                    angle_deg = math.degrees(angle)
+
+                    # Angle thresholds for lap detection (e.g., start at 0, halfway at 180)
+                    start_angle_thresh = 15  # +/- 15 degrees around 0
+                    halfway_angle_thresh = 15 # +/- 15 degrees around 180
+
+                    if lap_state == LAP_STATE_AWAITING_START:
+                        if abs(angle_deg) < start_angle_thresh:
+                            lap_state = LAP_STATE_AWAITING_HALFWAY
+                            lap_start_time = ts
+                            print(f"Lap started at t={ts:.3f}")
+                    elif lap_state == LAP_STATE_AWAITING_HALFWAY:
+                        if abs(angle_deg) > (180 - halfway_angle_thresh):
+                            lap_state = LAP_STATE_AWAITING_FINISH
+                    elif lap_state == LAP_STATE_AWAITING_FINISH:
+                        if abs(angle_deg) < start_angle_thresh:
+                            duration = ts - lap_start_time
+                            lap_durations.append(duration)
+                            print(f"Lap {len(lap_durations)} completed in {duration:.3f}s")
+                            lap_state = LAP_STATE_AWAITING_START
 
             draw_frame = frame.copy()
             if u is not None and v is not None:
@@ -258,10 +290,13 @@ def main():
                 cv2.putText(draw_frame, "COLOR CALIBRATION: Click on the color to track", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
                 text_y_base += 20
 
-            if mode == "LINE" and measuring:
-                rt_text = f"RT: {len(round_trip_durations)}"
-                cv2.putText(draw_frame, rt_text, (draw_frame.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
-
+            if measuring:
+                if mode == "LINE":
+                    rt_text = f"RT: {len(round_trip_durations)}"
+                    cv2.putText(draw_frame, rt_text, (draw_frame.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
+                elif mode == "CIRCLE":
+                    lap_text = f"Laps: {len(lap_durations)}"
+                    cv2.putText(draw_frame, lap_text, (draw_frame.shape[1] - 120, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
 
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
             if x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
@@ -271,7 +306,7 @@ def main():
             cv2.putText(draw_frame, uv_text, (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
             cv2.putText(draw_frame, xy_text, (10, text_y_base + 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, 1, cv2.LINE_AA)
 
-            # Error display under coordinates (LINE mode with calibration)
+            # Error display under coordinates
             err_text_y = text_y_base + 40
             if current_error is not None and runtime_calib is not None:
                 cv2.putText(
@@ -322,8 +357,12 @@ def main():
                 measuring = True
                 t_start = ts
                 records.clear()
-                round_trip_state = RT_STATE_AWAITING_DEPARTURE
-                round_trip_durations.clear()
+                if mode == "LINE":
+                    round_trip_state = RT_STATE_AWAITING_DEPARTURE
+                    round_trip_durations.clear()
+                elif mode == "CIRCLE":
+                    lap_state = LAP_STATE_AWAITING_START
+                    lap_durations.clear()
                 print("Measurement started.")
             elif key == start_key and app_state != STATE_VIEW:
                 print("Finish calibration before starting measurement.")
@@ -410,7 +449,7 @@ def main():
         f"Max error: {max_err:.3f} mm",
     ]
 
-    if round_trip_durations:
+    if mode == "LINE" and round_trip_durations:
         avg_rt = np.mean(round_trip_durations)
         min_rt = min(round_trip_durations)
         max_rt = max(round_trip_durations)
@@ -418,6 +457,14 @@ def main():
         print(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
         result_lines.append(f"Round Trips: {len(round_trip_durations)}")
         result_lines.append(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
+    elif mode == "CIRCLE" and lap_durations:
+        avg_lap = np.mean(lap_durations)
+        min_lap = min(lap_durations)
+        max_lap = max(lap_durations)
+        print(f"Laps: {len(lap_durations)} completed.")
+        print(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
+        result_lines.append(f"Laps: {len(lap_durations)}")
+        result_lines.append(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
 
     result_lines.extend([
         f"CSV: {csv_path.name}",
