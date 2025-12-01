@@ -39,4 +39,8 @@ class Camera:
         cv2.destroyAllWindows()
 
     def set_mouse_callback(self, callback) -> None:
-        cv2.setMouseCallback(self.window_name, callback)
+        if callback is None:
+            # Set a dummy callback that does nothing to effectively remove the old one
+            cv2.setMouseCallback(self.window_name, lambda *args: None)
+        else:
+            cv2.setMouseCallback(self.window_name, callback)

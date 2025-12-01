@@ -60,16 +60,22 @@ def main():
     stop_key = key_code(camera_cfg.get("stop_key", "e"))
     quit_key = key_code(camera_cfg.get("quit_key", "q"))
     calibrate_key = key_code(camera_cfg.get("calibrate_key", "c"))
+    color_calibrate_key = key_code(camera_cfg.get("color_calibrate_key", "k"))
 
     calib_line_length = float(calib_cfg.get("two_point_length_mm", 100.0))
 
     trajectory = build_trajectory(mode, config)
 
+    # Application states
+    STATE_VIEW = "VIEW"
+    STATE_GEOMETRY_CALIBRATION = "GEOMETRY_CALIBRATION"
+    STATE_COLOR_CALIBRATION = "COLOR_CALIBRATION"
+    app_state = STATE_VIEW
+
     runtime_calib = None
     calib_points_px = []
     calib_line_px = None
     calib_circle_draw = None
-    calibrating = False
     runtime_traj = trajectory
 
     records = []
@@ -84,9 +90,12 @@ def main():
         window_name=camera_cfg.get("window_name", "LiveView"),
     )
 
-    def mouse_cb(event, x, y, flags, param):
-        nonlocal calibrating, calib_points_px, runtime_calib, runtime_traj, calib_line_px, calib_circle_draw
-        if not calibrating:
+    # Store the current frame for the callback
+    current_frame = None
+
+    def on_geometry_calib_mouse(event, x, y, flags, param):
+        nonlocal app_state, calib_points_px, runtime_calib, runtime_traj, calib_line_px, calib_circle_draw
+        if app_state != STATE_GEOMETRY_CALIBRATION:
             return
         if event == cv2.EVENT_LBUTTONDOWN:
             if len(calib_points_px) >= 2:
@@ -119,9 +128,41 @@ def main():
                     runtime_calib = None
                     calib_line_px = None
                     calib_circle_draw = None
-                calibrating = False
+                app_state = STATE_VIEW
+                cam.set_mouse_callback(None)
 
-    cam.set_mouse_callback(mouse_cb)
+    def on_color_calib_mouse(event, x, y, flags, param):
+        nonlocal app_state, marker_cfg
+        if app_state != STATE_COLOR_CALIBRATION or current_frame is None:
+            return
+        if event == cv2.EVENT_LBUTTONDOWN:
+            hsv_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2HSV)
+            h, s, v = hsv_frame[y, x]
+            h_int, s_int, v_int = int(h), int(s), int(v)
+            print(f"Color picked at ({x}, {y}): BGR={current_frame[y,x].tolist()}, HSV=[{h_int}, {s_int}, {v_int}]")
+
+            h_spread = 10
+            s_spread = 50
+            v_spread = 50
+
+            hsv_lower = np.array([h_int - h_spread, s_int - s_spread, v_int - v_spread], dtype=int)
+            hsv_upper = np.array([h_int + h_spread, s_int + s_spread, v_int + v_spread], dtype=int)
+            
+            # Clamp values to be in valid range
+            hsv_lower = np.clip(hsv_lower, [0, 40, 40], [179, 255, 255])
+            hsv_upper = np.clip(hsv_upper, [0, 40, 40], [179, 255, 255])
+
+            marker_cfg["hsv_lower"] = hsv_lower.tolist()
+            marker_cfg["hsv_upper"] = hsv_upper.tolist()
+            # Also update hsv_ranges to keep it consistent
+            marker_cfg["hsv_ranges"] = [{"lower": hsv_lower.tolist(), "upper": hsv_upper.tolist()}]
+
+            print(f"New HSV range set:")
+            print(f"  lower: {hsv_lower.tolist()}")
+            print(f"  upper: {hsv_upper.tolist()}")
+
+            app_state = STATE_VIEW
+            cam.set_mouse_callback(None)
 
     try:
         while True:
@@ -132,6 +173,8 @@ def main():
                     break
                 else:
                     return
+            
+            current_frame = frame
 
             u, v = detect_marker(frame, marker_cfg)
             x, y = pixel_to_world(u, v, calib_cfg, runtime_calib=runtime_calib)
@@ -152,14 +195,17 @@ def main():
                     line_type=cv2.LINE_AA,
                 )
 
-            status_text = "CALIB" if calibrating else ("REC" if measuring else "READY")
-            status_color = (0, 165, 255) if calibrating else ((0, 255, 0) if measuring else (0, 255, 255))
+            is_calibrating_geometry = app_state == STATE_GEOMETRY_CALIBRATION
+            is_calibrating_color = app_state == STATE_COLOR_CALIBRATION
+            
+            status_text = "G-CAL" if is_calibrating_geometry else ("C-CAL" if is_calibrating_color else ("REC" if measuring else "READY"))
+            status_color = (0, 165, 255) if (is_calibrating_geometry or is_calibrating_color) else ((0, 255, 0) if measuring else (0, 255, 255))
             font_scale = float(display_cfg.get("font_scale", 0.5))
             text_color = tuple(display_cfg.get("text_color", [0, 255, 0]))
             cv2.putText(draw_frame, f"{status_text} mode={mode}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
             cv2.putText(
                 draw_frame,
-                f"[{format_key(start_key)}]=start  [{format_key(stop_key)}]=stop  [{format_key(calibrate_key)}]=calib  [{format_key(quit_key)}]=quit",
+                f"[{format_key(start_key)}]=start [{format_key(stop_key)}]=stop [{format_key(calibrate_key)}]=g-cal [{format_key(color_calibrate_key)}]=c-cal [{format_key(quit_key)}]=quit",
                 (10, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 font_scale,
@@ -169,13 +215,17 @@ def main():
             )
 
             text_y_base = 60
-            if calibrating:
+            if is_calibrating_geometry:
                 if mode == "LINE":
                     calib_msg = f"Calibrate LINE: click 2 points ({calib_line_length:.0f}mm)"
                 else:
                     calib_msg = "Calibrate CIRCLE: click center then edge"
                 cv2.putText(draw_frame, calib_msg, (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
                 text_y_base += 20
+            elif is_calibrating_color:
+                cv2.putText(draw_frame, "COLOR CALIBRATION: Click on the color to track", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
+                text_y_base += 20
+
 
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
             if x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
@@ -200,7 +250,7 @@ def main():
                 )
 
             # Draw calibration clicks and line overlay
-            if calib_points_px:
+            if calib_points_px and is_calibrating_geometry:
                 for pt in calib_points_px:
                     cv2.circle(draw_frame, pt, 4, (255, 0, 0), thickness=-1)
             if calib_line_px and mode == "LINE":
@@ -216,7 +266,8 @@ def main():
                 if measuring:
                     print("Stop measurement before entering calibration.")
                 else:
-                    calibrating = True
+                    app_state = STATE_GEOMETRY_CALIBRATION
+                    cam.set_mouse_callback(on_geometry_calib_mouse)
                     calib_points_px = []
                     calib_line_px = None
                     calib_circle_draw = None
@@ -224,13 +275,20 @@ def main():
                         print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
                     else:
                         print("Calibration mode (CIRCLE): click center then edge point.")
-            elif key == start_key and not measuring and not calibrating:
+            elif key == color_calibrate_key:
+                if measuring:
+                    print("Stop measurement before entering color calibration.")
+                else:
+                    app_state = STATE_COLOR_CALIBRATION
+                    cam.set_mouse_callback(on_color_calib_mouse)
+                    print("Color calibration mode: Click on the color to track.")
+            elif key == start_key and app_state == STATE_VIEW:
                 measuring = True
                 t_start = ts
                 records.clear()
                 print("Measurement started.")
-            elif key == start_key and calibrating:
-                print("Finish calibration clicks before starting measurement.")
+            elif key == start_key and app_state != STATE_VIEW:
+                print("Finish calibration before starting measurement.")
             elif key == stop_key and measuring:
                 t_last = ts
                 measuring = False
