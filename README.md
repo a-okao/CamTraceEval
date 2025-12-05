@@ -4,11 +4,7 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
 
 ## 1. 初回セットアップ
 
-1. 依存ライブラリをインストール
-   ```bash
-    pip install opencv-python numpy matplotlib pyyaml
-   ```
-2. `config.yaml` を実環境に合わせて編集
+1. `config.yaml` を実環境に合わせて編集
    - `camera.device_id`: 使用するカメラ番号
    - `camera.calibrate_key`: キャリブレーションモードに入るキー（デフォルト `c`）
    - `marker.hsv_ranges`: 緑色マーカー用のHSV範囲。別色にしたい場合はここを変更
@@ -17,7 +13,8 @@ Python + OpenCV でマーカー付き手先の軌道を評価し、理想軌道�
    - `calibration.two_point_length_mm`: キャリブレーションでクリックする2点間を何mmとみなすか（デフォルト 100mm）
    - `trajectory`: 直線始点/終点、円の中心/半径
    - `output.base_dir` や `output.label` など
-3. カメラを接続し、マーカーが映る位置にセット
+2. カメラを接続し、マーカーが映る位置にセット
+3. 以下の手順に従ってアプリを起動
 
 ## 2. 使い方（計測フロー）
 
@@ -27,9 +24,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install opencv-python numpy matplotlib pyyaml
 ```
-
+その後、以下のいずれかを入力
 - 直線軌道モード: `python main.py --mode LINE --label before`
 - 円軌道モード: `python main.py --mode CIRCLE --label before`
+- **円軌道モード (自動キャリブレーション):** `python main.py --mode CIRCLE --auto-circle --label auto_calibrated`
 - 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
 
 ### ライブビュー操作
@@ -40,6 +38,10 @@ pip install opencv-python numpy matplotlib pyyaml
 - `[c]`（デフォルト）: キャリブレーションモード。
    - LINE: マウス左クリックで2点を順に指定し、2点目で自動終了。1点目を原点、2点目を x=100mm（設定値）とみなし、以降の mm 座標を更新。クリックした2点を結ぶ直線をライブビューに表示。
    - CIRCLE: マウス左クリックで「円の中心 → 外形上の1点」を指定し、2点目で自動終了。クリックした2点から中心と半径を算出し、以降の mm 座標変換・誤差計算・軌跡描画に使用（クリック中心を原点とした mm 座標系）。ライブビューにキャリブ済みの円と中心を描画。
+- `--auto-circle` オプション有効時（CIRCLEモードのみ）:
+    - `[s]` キーで計測開始後、`AUTO-CAL` モードとして約5周分の軌道を自動的に記録。
+    - 5周完了後、記録された軌道データから理想円を自動推定し、リアルタイムで描画を更新。
+    - その後、自動的に計測をリセットし、`REC` モード（本番計測）へ移行します。本番計測開始に別途キー入力は不要です。
 - `[k]`（デフォルト）: 色キャリブレーションモード。
   - マウスでクリックした位置の色から追跡用の新しいHSV範囲を自動設定。設定された範囲はコンソールに出力。
 - 計測終了後、結果（RMSE/最大誤差/サンプル数/所要時間、出力ファイル名）を別ウィンドウに表示し、保存した軌跡・誤差プロット画像も別窓で開く。任意キーで全ウィンドウを閉じる。
