@@ -118,6 +118,16 @@ def main():
         if event == cv2.EVENT_LBUTTONDOWN:
             if len(calib_points_px) >= 2:
                 return
+            
+            # Force horizontal line for the second point in LINE mode
+            if mode == "LINE" and len(calib_points_px) == 1:
+                y = calib_points_px[0][1]
+                print(f"Forcing horizontal alignment: y set to {y}")
+            # Force horizontal alignment for the edge point in CIRCLE mode
+            elif mode == "CIRCLE" and len(calib_points_px) == 1:
+                y = calib_points_px[0][1]
+                print(f"Forcing horizontal alignment for circle edge: y set to {y}")
+
             calib_points_px.append((x, y))
             print(f"Calibration point {len(calib_points_px)}: ({x}, {y})")
             if len(calib_points_px) == 2:
@@ -129,8 +139,10 @@ def main():
                         calib_circle_draw = None
                         print("Line calibration updated from two points.")
                     elif mode == "CIRCLE":
-                        center_pt = calib_points_px[0]
-                        edge_pt = calib_points_px[1]
+                        # User clicks edge then center
+                        edge_pt = calib_points_px[0]
+                        center_pt = calib_points_px[1]
+                        
                         radius_mm = float(config.get("trajectory", {}).get("circle", {}).get("radius", 40.0))
                         runtime_calib = build_circle_calibration(center_pt, edge_pt, radius_mm=radius_mm)
                         runtime_traj = CircleTrajectory(center=np.array([0.0, 0.0]), radius=radius_mm, samples=int(config.get("trajectory", {}).get("ideal_plot_samples", 360)))
@@ -342,11 +354,10 @@ def main():
                     calib_points_px = []
                     calib_line_px = None
                     calib_circle_draw = None
-                    if mode == "LINE":
-                        print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
-                    else:
-                        print("Calibration mode (CIRCLE): click center then edge point.")
-            elif key == color_calibrate_key:
+                                    if mode == "LINE":
+                                        print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
+                                    else:
+                                        print("Calibration mode (CIRCLE): click edge then center point.")            elif key == color_calibrate_key:
                 if measuring:
                     print("Stop measurement before entering color calibration.")
                 else:
