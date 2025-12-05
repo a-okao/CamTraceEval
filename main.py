@@ -354,10 +354,11 @@ def main():
                     calib_points_px = []
                     calib_line_px = None
                     calib_circle_draw = None
-                                    if mode == "LINE":
-                                        print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
-                                    else:
-                                        print("Calibration mode (CIRCLE): click edge then center point.")            elif key == color_calibrate_key:
+                    if mode == "LINE":
+                        print(f"Calibration mode (LINE): click two points for {calib_line_length}mm reference.")
+                    else:
+                        print("Calibration mode (CIRCLE): click edge then center point.")
+            elif key == color_calibrate_key:
                 if measuring:
                     print("Stop measurement before entering color calibration.")
                 else:
