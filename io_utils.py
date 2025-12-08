@@ -25,6 +25,24 @@ def save_csv(records: List[dict], path: Path) -> None:
             writer.writerow(row)
 
 
+def load_csv(path: Path) -> List[dict]:
+    records = []
+    with path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rec = {}
+            for k, v in row.items():
+                if v == "":
+                    rec[k] = None
+                else:
+                    try:
+                        rec[k] = float(v)
+                    except ValueError:
+                        rec[k] = v  # Keep as string if not float (shouldn't happen for expected fields)
+            records.append(rec)
+    return records
+
+
 def plot_trajectory(ideal: np.ndarray, actual: Iterable[Tuple[float, float]], output_path: Path, mode: str) -> None:
     ensure_dir(output_path.parent)
     ideal = np.asarray(ideal, dtype=float)

@@ -29,6 +29,8 @@ pip install opencv-python numpy matplotlib pyyaml
 - 円軌道モード: `python main.py --mode CIRCLE --label before`
 - **円軌道モード (自動キャリブレーション):** `python main.py --mode CIRCLE --auto-circle --label auto_calibrated`
 - 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
+- 過去の計測結果を読み込む場合: `python main.py --mode CIRCLE --load outputs/mode_circle_before_20251208_123456.csv`
+  - `--mode` は、読み込むCSVがどのモードで計測されたものかを示すために必要です。
 
 ### オプション設定
 ウォームアップ回数や記録回数を変更したい場合は以下のオプションを使用します。

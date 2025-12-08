@@ -10,7 +10,7 @@ import yaml
 from calib import build_circle_calibration, build_two_point_calibration, pixel_to_world
 from camera import Camera
 from evaluator import compute_errors, error_stats, movement_duration
-from io_utils import ensure_dir, plot_error, plot_trajectory, save_csv
+from io_utils import ensure_dir, plot_error, plot_trajectory, save_csv, load_csv
 from marker import detect_marker
 from trajectory import CircleTrajectory, LineTrajectory, build_trajectory
 
@@ -37,7 +37,112 @@ def parse_args():
     parser.add_argument("--device", type=int, help="Camera device ID override")
     parser.add_argument("--warmup", type=int, default=3, help="Number of warmup cycles (default: 3)")
     parser.add_argument("--cycles", type=int, default=5, help="Number of recording cycles to auto-stop (default: 5)")
+    parser.add_argument("--load", type=Path, help="Path to a CSV file to load and re-evaluate")
     return parser.parse_args()
+
+
+def process_results(records: list, trajectory, mode: str, label: str, base_dir: Path, round_trip_durations: list = None, lap_durations: list = None):
+    if not records:
+        print("No data recorded.")
+        return
+
+    # Assuming t_start is the time of the first record if not provided, 
+    # but strictly speaking t_start is implicit in relative times if they start from 0.
+    # However, records['time'] are relative to start.
+    t_start = 0.0
+    t_last = records[-1]["time"]
+
+    xs = [rec["x"] for rec in records]
+    ys = [rec["y"] for rec in records]
+    errors = compute_errors(xs, ys, trajectory)
+    
+    # Update errors in records
+    for rec, err in zip(records, errors):
+        if err is None or (isinstance(err, float) and math.isnan(err)):
+            rec["error"] = None
+        else:
+            rec["error"] = float(err)
+
+    rmse, max_err = error_stats(errors)
+    duration = movement_duration(t_start, t_last)
+
+    ensure_dir(base_dir)
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prefix = f"mode_{mode.lower()}_{label}_{run_id}"
+    csv_path = base_dir / f"{prefix}.csv"
+    traj_plot_path = base_dir / f"{prefix}_trajectory.png"
+    err_plot_path = base_dir / f"{prefix}_error.png"
+
+    save_csv(records, csv_path)
+    ideal_points = trajectory.ideal_points()
+    actual_points = [(rec["x"], rec["y"]) for rec in records]
+    plot_trajectory(ideal_points, actual_points, traj_plot_path, mode)
+    times = [rec["time"] for rec in records]
+    plot_error(times, errors, err_plot_path)
+
+    print(f"Saved CSV: {csv_path}")
+    print(f"Saved trajectory plot: {traj_plot_path}")
+    print(f"Saved error plot: {err_plot_path}")
+    print(f"Samples: {len(records)}")
+    print(f"Duration: {duration:.3f} s")
+    print(f"RMSE: {rmse:.3f} mm, Max error: {max_err:.3f} mm")
+
+    result_lines = [
+        f"Mode: {mode}",
+        f"Samples: {len(records)}",
+        f"Duration: {duration:.3f} s",
+        f"RMSE: {rmse:.3f} mm",
+        f"Max error: {max_err:.3f} mm",
+    ]
+
+    if mode == "LINE" and round_trip_durations:
+        avg_rt = np.mean(round_trip_durations)
+        min_rt = min(round_trip_durations)
+        max_rt = max(round_trip_durations)
+        print(f"Round Trips: {len(round_trip_durations)} completed.")
+        print(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
+        result_lines.append(f"Round Trips: {len(round_trip_durations)}")
+        result_lines.append(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
+    elif mode == "CIRCLE" and lap_durations:
+        avg_lap = np.mean(lap_durations)
+        min_lap = min(lap_durations)
+        max_lap = max(lap_durations)
+        print(f"Laps: {len(lap_durations)} completed.")
+        print(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
+        result_lines.append(f"Laps: {len(lap_durations)}")
+        result_lines.append(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
+
+    result_lines.extend([
+        f"CSV: {csv_path.name}",
+        f"Trajectory plot: {traj_plot_path.name}",
+        f"Error plot: {err_plot_path.name}",
+        "Press any key to close",
+    ])
+
+    # Result window (separate from camera view)
+    res_h = 30 + 25 * len(result_lines)
+    res_w = 640
+    result_img = np.ones((res_h, res_w, 3), dtype=np.uint8) * 255
+    y = 30
+    for line in result_lines:
+        cv2.putText(result_img, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
+        y += 25
+    cv2.imshow("Result", result_img)
+
+    # Show saved plots in separate windows (press any key to close all)
+    traj_img = cv2.imread(str(traj_plot_path))
+    if traj_img is not None:
+        cv2.imshow("Trajectory Plot", traj_img)
+    else:
+        print(f"Failed to open trajectory plot image: {traj_plot_path}")
+    err_img = cv2.imread(str(err_plot_path))
+    if err_img is not None:
+        cv2.imshow("Error Plot", err_img)
+    else:
+        print(f"Failed to open error plot image: {err_plot_path}")
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
 def format_key(char_value: int) -> str:
@@ -69,6 +174,20 @@ def main():
     endpoint_threshold = float(traj_cfg.get("endpoint_threshold_mm", 5.0))
 
     trajectory = build_trajectory(mode, config)
+
+    # If loading from file, skip camera setup and loop
+    if args.load:
+        print(f"Loading data from {args.load}...")
+        records = load_csv(args.load)
+        if not records:
+            print("Failed to load records or file is empty.")
+            return
+        
+        # We don't have round_trip/lap durations when loading from CSV
+        # unless we re-calculate them or store them separately.
+        # For now, we'll just pass empty lists or None.
+        process_results(records, trajectory, mode, label, base_dir, None, None)
+        return
 
     # Application states
     STATE_VIEW = "VIEW"
@@ -459,102 +578,9 @@ def main():
         print("No data recorded. Use start/stop keys during capture.")
         return
 
-    if t_start is None:
-        t_start = 0.0
-    if t_last is None and records:
-        t_last = t_start + records[-1]["time"]
-
     traj_for_eval = runtime_traj if runtime_traj is not None else trajectory
-
-    xs = [rec["x"] for rec in records]
-    ys = [rec["y"] for rec in records]
-    errors = compute_errors(xs, ys, traj_for_eval)
-    for rec, err in zip(records, errors):
-        if err is None or (isinstance(err, float) and math.isnan(err)):
-            rec["error"] = None
-        else:
-            rec["error"] = float(err)
-
-    rmse, max_err = error_stats(errors)
-    duration = movement_duration(t_start, t_last)
-
-    ensure_dir(base_dir)
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    prefix = f"mode_{mode.lower()}_{label}_{run_id}"
-    csv_path = base_dir / f"{prefix}.csv"
-    traj_plot_path = base_dir / f"{prefix}_trajectory.png"
-    err_plot_path = base_dir / f"{prefix}_error.png"
-
-    save_csv(records, csv_path)
-    ideal_points = traj_for_eval.ideal_points()
-    actual_points = [(rec["x"], rec["y"]) for rec in records]
-    plot_trajectory(ideal_points, actual_points, traj_plot_path, mode)
-    times = [rec["time"] for rec in records]
-    plot_error(times, errors, err_plot_path)
-
-    print(f"Saved CSV: {csv_path}")
-    print(f"Saved trajectory plot: {traj_plot_path}")
-    print(f"Saved error plot: {err_plot_path}")
-    print(f"Samples: {len(records)}")
-    print(f"Duration: {duration:.3f} s (t_start={t_start:.3f}, t_end={t_last:.3f})")
-    print(f"RMSE: {rmse:.3f} mm, Max error: {max_err:.3f} mm")
-
-    result_lines = [
-        f"Mode: {mode}",
-        f"Samples: {len(records)}",
-        f"Duration: {duration:.3f} s",
-        f"RMSE: {rmse:.3f} mm",
-        f"Max error: {max_err:.3f} mm",
-    ]
-
-    if mode == "LINE" and round_trip_durations:
-        avg_rt = np.mean(round_trip_durations)
-        min_rt = min(round_trip_durations)
-        max_rt = max(round_trip_durations)
-        print(f"Round Trips: {len(round_trip_durations)} completed.")
-        print(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
-        result_lines.append(f"Round Trips: {len(round_trip_durations)}")
-        result_lines.append(f"  Avg: {avg_rt:.3f}s, Min: {min_rt:.3f}s, Max: {max_rt:.3f}s")
-    elif mode == "CIRCLE" and lap_durations:
-        avg_lap = np.mean(lap_durations)
-        min_lap = min(lap_durations)
-        max_lap = max(lap_durations)
-        print(f"Laps: {len(lap_durations)} completed.")
-        print(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
-        result_lines.append(f"Laps: {len(lap_durations)}")
-        result_lines.append(f"  Avg: {avg_lap:.3f}s, Min: {min_lap:.3f}s, Max: {max_lap:.3f}s")
-
-    result_lines.extend([
-        f"CSV: {csv_path.name}",
-        f"Trajectory plot: {traj_plot_path.name}",
-        f"Error plot: {err_plot_path.name}",
-        "Press any key to close",
-    ])
-
-    # Result window (separate from camera view)
-    res_h = 30 + 25 * len(result_lines)
-    res_w = 640
-    result_img = np.ones((res_h, res_w, 3), dtype=np.uint8) * 255
-    y = 30
-    for line in result_lines:
-        cv2.putText(result_img, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
-        y += 25
-    cv2.imshow("Result", result_img)
-
-    # Show saved plots in separate windows (press any key to close all)
-    traj_img = cv2.imread(str(traj_plot_path))
-    if traj_img is not None:
-        cv2.imshow("Trajectory Plot", traj_img)
-    else:
-        print(f"Failed to open trajectory plot image: {traj_plot_path}")
-    err_img = cv2.imread(str(err_plot_path))
-    if err_img is not None:
-        cv2.imshow("Error Plot", err_img)
-    else:
-        print(f"Failed to open error plot image: {err_plot_path}")
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    
+    process_results(records, traj_for_eval, mode, label, base_dir, round_trip_durations, lap_durations)
 
 
 if __name__ == "__main__":
