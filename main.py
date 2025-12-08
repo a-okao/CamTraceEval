@@ -35,6 +35,8 @@ def parse_args():
     parser.add_argument("--label", type=str, help="Label for output files (e.g., before/after)")
     parser.add_argument("--output-dir", type=Path, help="Base directory for outputs")
     parser.add_argument("--device", type=int, help="Camera device ID override")
+    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup cycles (default: 3)")
+    parser.add_argument("--cycles", type=int, default=5, help="Number of recording cycles to auto-stop (default: 5)")
     return parser.parse_args()
 
 
@@ -100,6 +102,10 @@ def main():
     lap_state = LAP_STATE_AWAITING_START
     lap_start_time = None
     lap_durations = []
+
+    WARMUP_CYCLES = args.warmup
+    RECORD_CYCLES = args.cycles
+    warmup_done = False
 
     cam = Camera(
         device_id=args.device if args.device is not None else int(camera_cfg.get("device_id", 0)),
@@ -233,6 +239,19 @@ def main():
                             duration = ts - round_trip_start_time
                             round_trip_durations.append(duration)
                             print(f"Round trip {len(round_trip_durations)} completed in {duration:.3f}s")
+                            
+                            if not warmup_done and len(round_trip_durations) >= WARMUP_CYCLES:
+                                warmup_done = True
+                                t_start = ts
+                                round_trip_durations.clear()
+                                records.clear()
+                                print(f"Warmup of {WARMUP_CYCLES} cycles complete. Recording started.")
+                            elif warmup_done and len(round_trip_durations) >= RECORD_CYCLES:
+                                print(f"Auto-stop: Reached target of {RECORD_CYCLES} cycles.")
+                                measuring = False
+                                t_last = ts
+                                break
+                            
                             round_trip_state = RT_STATE_AWAITING_DEPARTURE
                 elif mode == "CIRCLE" and isinstance(runtime_traj, CircleTrajectory):
                     center = runtime_traj.center
@@ -256,6 +275,19 @@ def main():
                             duration = ts - lap_start_time
                             lap_durations.append(duration)
                             print(f"Lap {len(lap_durations)} completed in {duration:.3f}s")
+                            
+                            if not warmup_done and len(lap_durations) >= WARMUP_CYCLES:
+                                warmup_done = True
+                                t_start = ts
+                                lap_durations.clear()
+                                records.clear()
+                                print(f"Warmup of {WARMUP_CYCLES} laps complete. Recording started.")
+                            elif warmup_done and len(lap_durations) >= RECORD_CYCLES:
+                                print(f"Auto-stop: Reached target of {RECORD_CYCLES} laps.")
+                                measuring = False
+                                t_last = ts
+                                break
+
                             lap_state = LAP_STATE_AWAITING_START
 
             draw_frame = frame.copy()
@@ -274,8 +306,25 @@ def main():
             is_calibrating_geometry = app_state == STATE_GEOMETRY_CALIBRATION
             is_calibrating_color = app_state == STATE_COLOR_CALIBRATION
             
-            status_text = "G-CAL" if is_calibrating_geometry else ("C-CAL" if is_calibrating_color else ("REC" if measuring else "READY"))
-            status_color = (0, 165, 255) if (is_calibrating_geometry or is_calibrating_color) else ((0, 255, 0) if measuring else (0, 255, 255))
+            if is_calibrating_geometry:
+                status_text = "G-CAL"
+                status_color = (0, 165, 255)
+            elif is_calibrating_color:
+                status_text = "C-CAL"
+                status_color = (0, 165, 255)
+            elif measuring:
+                if not warmup_done:
+                    current_count = len(round_trip_durations) if mode == "LINE" else len(lap_durations)
+                    status_text = f"WARMUP {current_count}/{WARMUP_CYCLES}"
+                    status_color = (0, 255, 255) # Yellow for warmup
+                else:
+                    current_count = len(round_trip_durations) if mode == "LINE" else len(lap_durations)
+                    status_text = f"REC {current_count}/{RECORD_CYCLES}"
+                    status_color = (0, 255, 0) # Green for recording
+            else:
+                status_text = "READY"
+                status_color = (0, 255, 255)
+
             font_scale = float(display_cfg.get("font_scale", 0.5))
             text_color = tuple(display_cfg.get("text_color", [0, 255, 0]))
             cv2.putText(draw_frame, f"{status_text} mode={mode}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
@@ -369,19 +418,24 @@ def main():
                 measuring = True
                 t_start = ts
                 records.clear()
+                warmup_done = False
                 if mode == "LINE":
                     round_trip_state = RT_STATE_AWAITING_DEPARTURE
                     round_trip_durations.clear()
                 elif mode == "CIRCLE":
                     lap_state = LAP_STATE_AWAITING_START
                     lap_durations.clear()
-                print("Measurement started.")
+                print("Measurement started (Warmup phase).")
             elif key == start_key and app_state != STATE_VIEW:
                 print("Finish calibration before starting measurement.")
             elif key == stop_key and measuring:
                 t_last = ts
                 measuring = False
-                print("Measurement stopped.")
+                if not warmup_done:
+                    print("Measurement stopped during warmup. No data recorded.")
+                    records.clear() # Ensure no partial warmup data is saved
+                else:
+                    print("Measurement stopped.")
                 break
             elif key == quit_key:
                 if measuring:
@@ -394,7 +448,7 @@ def main():
                 print("ESC pressed, quitting.")
                 break
 
-            if measuring:
+            if measuring and warmup_done:
                 rel_time = ts - t_start if t_start is not None else ts
                 records.append(
                     {

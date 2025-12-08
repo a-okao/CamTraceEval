@@ -30,6 +30,17 @@ pip install opencv-python numpy matplotlib pyyaml
 - **円軌道モード (自動キャリブレーション):** `python main.py --mode CIRCLE --auto-circle --label auto_calibrated`
 - 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
 
+### オプション設定
+ウォームアップ回数や記録回数を変更したい場合は以下のオプションを使用します。
+
+- `--warmup`: 記録開始前のウォームアップ（カウントのみ、記録なし）回数を指定（デフォルト: 3回）
+- `--cycles`: 自動停止するまでの記録回数を指定（デフォルト: 5回）
+
+**例: 1回のウォームアップ後に10回記録して自動停止**
+```bash
+python main.py --mode CIRCLE --warmup 1 --cycles 10
+```
+
 ### ライブビュー操作
 - `[s]`: 計測開始
 - `[e]`: 計測終了（自動で保存）
