@@ -37,10 +37,16 @@ pip install opencv-python numpy matplotlib pyyaml
 
 - `--warmup`: 記録開始前のウォームアップ（カウントのみ、記録なし）回数を指定（デフォルト: 3回）
 - `--cycles`: 自動停止するまでの記録回数を指定（デフォルト: 5回）
+- `--fit-line`: `--load` オプションでLINEモードのデータを読み込む際に、読み込んだデータから最適な直線（100mm）をフィッティングし、それを理想軌道として再評価します。このオプションを付けない場合、`config.yaml` で設定された理想直線が使用されます。
 
 **例: 1回のウォームアップ後に10回記録して自動停止**
 ```bash
 python main.py --mode CIRCLE --warmup 1 --cycles 10
+```
+
+**例: 過去のLINEモードデータを読み込み、データから最適線をフィッティングして再評価**
+```bash
+python main.py --mode LINE --load your_line_data.csv --fit-line
 ```
 
 ### ライブビュー操作

@@ -98,30 +98,39 @@ def fit_circle(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, float]:
     return np.array([x_c, y_c]), radius
 
 
-def fit_line(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def fit_line_trajectory(x: np.ndarray, y: np.ndarray, length_mm: float = 100.0) -> LineTrajectory:
     """
-    Fit a line segment to points (x, y).
-    Uses PCA to find the direction and projects points to find the endpoints.
-    Returns (p0, p1).
+    Fit a line segment of a fixed length to points (x, y).
+    Uses PCA to find the principal direction.
+    The line is centered at the centroid of the data.
     """
     points = np.column_stack((x, y))
-    mean = np.mean(points, axis=0)
-    centered = points - mean
     
-    # PCA
+    # Filter valid points
+    valid_mask = ~np.isnan(points).any(axis=1)
+    points = points[valid_mask]
+    
+    if len(points) < 2:
+        raise ValueError("Not enough points to fit a line")
+
+    # 1. Centroid
+    centroid = np.mean(points, axis=0)
+    
+    # 2. PCA for direction
+    centered = points - centroid
     cov = np.cov(centered, rowvar=False)
     evals, evecs = np.linalg.eigh(cov)
-    # Eigenvector with largest eigenvalue is the direction
+    
+    # The principal direction is the eigenvector corresponding to the largest eigenvalue
     direction = evecs[:, np.argmax(evals)]
     
-    # Project points onto the line defined by mean and direction
-    # t = dot(point - mean, direction)
-    projections = np.dot(centered, direction)
+    # Ensure direction is normalized (eigh returns normalized vectors, but good to be safe)
+    direction = direction / np.linalg.norm(direction)
     
-    t_min = np.min(projections)
-    t_max = np.max(projections)
+    # 3. Create line segment of specified length centered at centroid
+    half_length = length_mm / 2.0
+    p0 = centroid - direction * half_length
+    p1 = centroid + direction * half_length
     
-    p0 = mean + t_min * direction
-    p1 = mean + t_max * direction
-    
-    return p0, p1
+    return LineTrajectory(p0=p0, p1=p1)
+
