@@ -48,9 +48,11 @@ def plot_trajectory(ideal: np.ndarray, actual: Iterable[Tuple[float, float]], ou
     ideal = np.asarray(ideal, dtype=float)
     real_pts = np.array([(x, y) for x, y in actual if x is not None and y is not None and not (np.isnan(x) or np.isnan(y))], dtype=float)
     plt.figure(figsize=(6, 6))
-    plt.plot(ideal[:, 0], ideal[:, 1], label=f"Ideal {mode}", color="tab:blue")
+    # Draw measured points first
     if real_pts.size > 0:
         plt.plot(real_pts[:, 0], real_pts[:, 1], label="Measured", color="tab:orange", marker="o", markersize=3, linewidth=1)
+    # Then draw ideal trajectory on top
+    plt.plot(ideal[:, 0], ideal[:, 1], label=f"Ideal {mode}", color="tab:blue")
     plt.xlabel("X [mm]")
     plt.ylabel("Y [mm]")
     plt.axis("equal")
