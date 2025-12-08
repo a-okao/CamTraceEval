@@ -351,14 +351,6 @@ def main():
                 cv2.putText(draw_frame, "COLOR CALIBRATION: Click on the color to track", (10, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, font_scale, status_color, 1, cv2.LINE_AA)
                 text_y_base += 20
 
-            if measuring:
-                if mode == "LINE":
-                    rt_text = f"RT: {len(round_trip_durations)}"
-                    cv2.putText(draw_frame, rt_text, (draw_frame.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
-                elif mode == "CIRCLE":
-                    lap_text = f"Laps: {len(lap_durations)}"
-                    cv2.putText(draw_frame, lap_text, (draw_frame.shape[1] - 120, 20), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), 2, cv2.LINE_AA)
-
             uv_text = f"u,v: {u:.0f}, {v:.0f} px" if u is not None and v is not None else "u,v: N/A"
             if x is not None and y is not None and not (math.isnan(x) or math.isnan(y)):
                 xy_text = f"x,y: {x:.1f}, {y:.1f} mm"
