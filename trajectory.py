@@ -134,3 +134,22 @@ def fit_line_trajectory(x: np.ndarray, y: np.ndarray, length_mm: float = 100.0) 
     
     return LineTrajectory(p0=p0, p1=p1)
 
+
+def fit_circle_trajectory(x: np.ndarray, y: np.ndarray, samples: int = 360) -> CircleTrajectory:
+    """
+    Fit a circle trajectory to points (x, y).
+    """
+    points = np.column_stack((x, y))
+    
+    # Filter valid points
+    valid_mask = ~np.isnan(points).any(axis=1)
+    x_valid = points[valid_mask, 0]
+    y_valid = points[valid_mask, 1]
+    
+    if len(x_valid) < 3:
+        raise ValueError("Not enough points to fit a circle")
+
+    center, radius = fit_circle(x_valid, y_valid)
+    
+    return CircleTrajectory(center=center, radius=radius, samples=samples)
+

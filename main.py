@@ -12,7 +12,7 @@ from camera import Camera
 from evaluator import compute_errors, error_stats, movement_duration
 from io_utils import ensure_dir, plot_error, plot_trajectory, save_csv, load_csv
 from marker import detect_marker
-from trajectory import CircleTrajectory, LineTrajectory, build_trajectory, fit_line_trajectory
+from trajectory import CircleTrajectory, LineTrajectory, build_trajectory, fit_line_trajectory, fit_circle_trajectory
 
 
 def key_code(value) -> int:
@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument("--cycles", type=int, default=5, help="Number of recording cycles to auto-stop (default: 5)")
     parser.add_argument("--load", type=Path, help="Path to a CSV file to load and re-evaluate")
     parser.add_argument("--fit-line", action="store_true", help="When loading LINE mode data, fit an ideal line (100mm) to the recorded points for evaluation.")
+    parser.add_argument("--fit-circle", action="store_true", help="When loading CIRCLE mode data, fit an ideal circle to the recorded points for evaluation.")
     return parser.parse_args()
 
 
@@ -194,6 +195,17 @@ def main():
                 print(f"New ideal line: p0={trajectory.p0}, p1={trajectory.p1}")
             except Exception as e:
                 print(f"Failed to fit line: {e}. Using default config trajectory.")
+
+        elif mode == "CIRCLE" and args.fit_circle: # Only fit if --fit-circle is provided
+            # Recalculate ideal trajectory based on loaded data for CIRCLE mode
+            print("Fitting ideal circle to loaded data...")
+            xs = [rec["x"] for rec in records]
+            ys = [rec["y"] for rec in records]
+            try:
+                trajectory = fit_circle_trajectory(np.array(xs, dtype=float), np.array(ys, dtype=float))
+                print(f"New ideal circle: center={trajectory.center}, radius={trajectory.radius:.2f}mm")
+            except Exception as e:
+                print(f"Failed to fit circle: {e}. Using default config trajectory.")
 
         # We don't have round_trip/lap durations when loading from CSV
         # unless we re-calculate them or store them separately.
