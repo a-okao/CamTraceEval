@@ -45,7 +45,7 @@ trajectory:
     center: [50.0, 0.0]
     radius: 40.0      # 直径 80 mm
   ideal_plot_samples: 360
-  endpoint_threshold_mm: 5.0 # 往復判定のしきい値 (mm)
+  endpoint_threshold_mm: 10.0 # 往復判定のしきい値 (mm)
 
 output:
   base_dir: "outputs"
