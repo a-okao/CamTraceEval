@@ -25,11 +25,11 @@ source .venv/bin/activate
 pip install opencv-python numpy matplotlib pyyaml
 ```
 その後、以下のいずれかを入力
-- 直線軌道モード: `python main.py --mode LINE --label before`
-- 円軌道モード: `python main.py --mode CIRCLE --label before`
+- 直線軌道モード: `python main.py --mode LINE`
+- 円軌道モード: `python main.py --mode CIRCLE`
 - **円軌道モード (自動キャリブレーション):** `python main.py --mode CIRCLE --auto-circle --label auto_calibrated`
 - 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
-- 過去の計測結果を読み込む場合: `python main.py --mode CIRCLE --load outputs/mode_circle_before_20251208_123456.csv`
+- 過去の計測結果を読み込む場合: `python main.py --mode CIRCLE --load outputs/[ここに実際にファイル名を入力].csv`
   - `--mode` は、読み込むCSVがどのモードで計測されたものかを示すために必要です。
 
 ### オプション設定
