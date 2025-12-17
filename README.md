@@ -30,7 +30,7 @@ pip install opencv-python numpy matplotlib pyyaml
 - 過去の計測結果を読み込む場合: `python main.py --mode LINE --load outputs/[ここに実際のファイル名を入力].csv`
   - `--mode` は、読み込むCSVがどのモードで計測されたものかを示すために必要です。`--mode LINE`と`--mode CIRCLE`のどちらかを使用します。
 - 直線軌道モードフィッティング: `python main.py --mode LINE --load outputs/[ここに実際のファイル名を入力].csv --fit-line`
-- 円軌道モードフィッティング: `python main.py --mode CIRCLE --load outputs/[ここに実際のファイル名を入力].csv --fit-line`
+- 円軌道モードフィッティング: `python main.py --mode CIRCLE --load outputs/[ここに実際のファイル名を入力].csv --fit-circle`
 
 
 ### オプション設定
