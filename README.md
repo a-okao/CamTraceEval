@@ -24,13 +24,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install opencv-python numpy matplotlib pyyaml
 ```
-その後、以下のいずれかを入力
+その後、以下のいずれかを入力。よく使うもののみを記載しています。
 - 直線軌道モード: `python main.py --mode LINE`
 - 円軌道モード: `python main.py --mode CIRCLE`
-- **円軌道モード (自動キャリブレーション):** `python main.py --mode CIRCLE --auto-circle --label auto_calibrated`
-- 設定ファイルを変える場合: `python main.py --config your_config.yaml --mode LINE`
-- 過去の計測結果を読み込む場合: `python main.py --mode CIRCLE --load outputs/[ここに実際にファイル名を入力].csv`
-  - `--mode` は、読み込むCSVがどのモードで計測されたものかを示すために必要です。
+- 過去の計測結果を読み込む場合: `python main.py --mode LINE --load outputs/[ここに実際のファイル名を入力].csv`
+  - `--mode` は、読み込むCSVがどのモードで計測されたものかを示すために必要です。`--mode LINE`と`--mode CIRCLE`のどちらかを使用します。
+- 直線軌道モードフィッティング: `python main.py --mode LINE --load outputs/[ここに実際のファイル名を入力].csv --fit-line`
+- 円軌道モードフィッティング: `python main.py --mode CIRCLE --load outputs/[ここに実際のファイル名を入力].csv --fit-line`
+
 
 ### オプション設定
 ウォームアップ回数や記録回数を変更したい場合は以下のオプションを使用します。
