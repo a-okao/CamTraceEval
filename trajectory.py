@@ -98,10 +98,10 @@ def fit_circle(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, float]:
     return np.array([x_c, y_c]), radius
 
 
-def fit_line_trajectory(x: np.ndarray, y: np.ndarray, length_mm: float = 100.0) -> LineTrajectory:
+def fit_line_trajectory(x: np.ndarray, y: np.ndarray, length_mm: float = 100.0, fixed_direction: np.ndarray = None) -> LineTrajectory:
     """
     Fit a line segment of a fixed length to points (x, y).
-    Uses PCA to find the principal direction.
+    If fixed_direction is provided, uses that direction instead of PCA.
     The line is centered at the centroid of the data.
     """
     points = np.column_stack((x, y))
@@ -116,16 +116,26 @@ def fit_line_trajectory(x: np.ndarray, y: np.ndarray, length_mm: float = 100.0) 
     # 1. Centroid
     centroid = np.mean(points, axis=0)
     
-    # 2. PCA for direction
-    centered = points - centroid
-    cov = np.cov(centered, rowvar=False)
-    evals, evecs = np.linalg.eigh(cov)
-    
-    # The principal direction is the eigenvector corresponding to the largest eigenvalue
-    direction = evecs[:, np.argmax(evals)]
-    
-    # Ensure direction is normalized (eigh returns normalized vectors, but good to be safe)
-    direction = direction / np.linalg.norm(direction)
+    # 2. Determine direction
+    if fixed_direction is not None:
+        direction = np.array(fixed_direction, dtype=float)
+        norm = np.linalg.norm(direction)
+        if norm == 0:
+             # Fallback if invalid direction provided
+             direction = np.array([1.0, 0.0])
+        else:
+             direction = direction / norm
+    else:
+        # PCA for direction
+        centered = points - centroid
+        cov = np.cov(centered, rowvar=False)
+        evals, evecs = np.linalg.eigh(cov)
+        
+        # The principal direction is the eigenvector corresponding to the largest eigenvalue
+        direction = evecs[:, np.argmax(evals)]
+        
+        # Ensure direction is normalized
+        direction = direction / np.linalg.norm(direction)
     
     # 3. Create line segment of specified length centered at centroid
     half_length = length_mm / 2.0

@@ -187,11 +187,20 @@ def main():
         
         if mode == "LINE" and args.fit_line: # Only fit if --fit-line is provided
             # Recalculate ideal trajectory based on loaded data for LINE mode
-            print("Fitting ideal line (100mm) to loaded data...")
+            print("Fitting ideal line (translation only) to loaded data...")
             xs = [rec["x"] for rec in records]
             ys = [rec["y"] for rec in records]
             try:
-                trajectory = fit_line_trajectory(np.array(xs, dtype=float), np.array(ys, dtype=float), length_mm=calib_line_length)
+                # Use the direction and length from the configured ideal trajectory
+                ideal_direction = trajectory.vector
+                ideal_length = trajectory.norm
+                
+                trajectory = fit_line_trajectory(
+                    np.array(xs, dtype=float), 
+                    np.array(ys, dtype=float), 
+                    length_mm=ideal_length,
+                    fixed_direction=ideal_direction
+                )
                 print(f"New ideal line: p0={trajectory.p0}, p1={trajectory.p1}")
             except Exception as e:
                 print(f"Failed to fit line: {e}. Using default config trajectory.")
